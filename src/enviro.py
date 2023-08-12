@@ -3,19 +3,20 @@
 
 # Configuration
 run_background = True
-run_flask = True
+run_flask = False
 data_read_interval = 5 # in seconds
 
 
 #########################################################################
 # Sensors
+import time
 from enviroplus import gas
 from bme280 import BME280
 from pms5003 import PMS5003
 
 # Processing
 import os
-import time
+from time import strftime, localtime, sleep, time, asctime
 from flask import Flask, render_template
 import json
 from math import floor
@@ -27,7 +28,15 @@ app = Flask(__name__)
 bme280 = BME280()
 pms5003 = PMS5003()
 
-def read_data():
+
+hours = []
+run_flag = True
+samples_in_data = 600 ### check source
+
+def filename(t):
+    return strftime("enviro-data/%Y_%j_%H", localtime(t))
+
+def read_data(time):
     temperature = bme280.get_temperature()
     pressure = bme280.get_pressure()
     humidity = bme280.get_humidity()
@@ -42,8 +51,8 @@ def read_data():
     pm5 = particles.pm_per_1l_air(0.5)
     pm3 = particles.pm_per_1l_air(0.3)
     
-    curr_data = {
-        'time' : 0,
+    record = {
+        'time' : asctime(localtime(time)),
         'temp' : round(temperature, 1),
         'humi' : round(humidity, 1),
         'pres' : round(pressure, 1),
@@ -57,7 +66,7 @@ def read_data():
         'pm50' : pm50,
         'pm100': pm100,
     }
-    return curr_data
+    return record
 
 def print_data(curr_data):
     for key, value in curr_data.items():
@@ -76,31 +85,56 @@ def index():
 
 
 
-# multi threading
+# data collection thread
 def background(script_dir):
-    while (True):
-        # t = int(floor(time()))
-        data = read_data()
-        print_data(data)
+    global record, data
+    while (run_flag):
+        t = int(floor(time()))
+        record = read_data(t)
+
+        print(filename(t))
+        print_data(record)
+
+        # temp save to json
         file_path = os.path.join(script_dir, 'data.json')  # Absolute file path
-        save_data_to_json(data, file_path)
-        time.sleep(data_read_interval)
+        save_data_to_json(record, file_path)
+
+        sleep(data_read_interval)
         os.system('clear')
 
+
+def read_hour(fname):
+    hour = []
+    print("reading " + fname)
+    with open(fname, 'r') as f:
+        for line in f.readlines():
+            record = json.loads(line)
+            # TODO implement to prevent first record of the day being inaccurate
+            # add_record(hour, record)
+            hour.append(record)
+    return hour
+
+
 if __name__ == '__main__':
-    script_directory = os.path.dirname(os.path.abspath(__file__))  # Get the script's directory
+    # makes directory for data storage
+    if not os.path.isdir('enviro-data'):
+        os.makedirs('enviro-data')
+    
+    # opens directory and reads hourly data
+    files =  sorted(os.listdir('enviro-data'))
+    for f in files:
+        hours.append(read_hour('enviro-data/' + f))
+
+    script_directory = os.path.dirname(os.path.abspath(__file__))
     background_thread = threading.Thread(target=background, args=(script_directory,))
     background_thread.start()
 
-
-if run_flask and __name__ == '__main__':
-    app.run(debug=True, port=5000, host='0.0.0.0')
-    
-'''
-while (True):
-    data = read_data(t)
-    print_data(data)
-    save_data_to_json(data, 'data.json')
-    time.sleep(data_read_interval)
-    os.system('clear')
-'''
+    # TODO remove run_flask after testing
+    if run_flask:
+        try:
+            app.run(debug=True, port=5000, host='0.0.0.0')
+        except Exception as e:
+            print(e)
+        run_flag = False
+        print("Closing background thread")
+        background_thread.join()
