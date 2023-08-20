@@ -1,7 +1,7 @@
 # Live Air Pollution Tracker
-
-<img src="https://cdn.discordapp.com/attachments/1084642204590559242/1142718317673578576/image.png" alt="Web App Screenshot" width="70%">
-
+<p align="center">
+    <img src="https://cdn.discordapp.com/attachments/1084642204590559242/1142718317673578576/image.png" alt="Web App Screenshot" width="70%">
+</p>
 ## Overview
 
 The Live Air Pollution Tracker project aims to create a real-time air quality monitoring system using a Raspberry Pi and environmental sensors. The system collects data on various environmental parameters, such as temperature, humidity, pressure, gas levels, and particulate matter, and displays this information on a web-based dashboard.
