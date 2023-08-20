@@ -2,7 +2,7 @@
 #########################################################################
 
 # Configuration
-run_background = False
+run_background = True
 run_flask = True
 
 # sample is taken every <> seconds
@@ -40,7 +40,6 @@ curr_data = []
 hist_data = []
 
 def filename(t):
-    # add minute to filename
     return strftime("enviro-data/%Y_%j_%H_%M", localtime(t))
 
 def read_data(time):
@@ -49,14 +48,22 @@ def read_data(time):
     humidity = bme280.get_humidity()
 
     gases = gas.read_all()
-    particles = pms5003.read()
+    
+    while True:
+        try:
+            particles = pms5003.read()
+            break
+        except RuntimeError as e:
+            print("Particle sensor error: " + e)
+            pms5003.reset()
+            sleep(data_read_interval)
     
     pm100 = particles.pm_per_1l_air(10.0)
-    pm50 = particles.pm_per_1l_air(5.0)
-    pm25 = particles.pm_per_1l_air(2.5)
-    pm10 = particles.pm_per_1l_air(1.0)
-    pm5 = particles.pm_per_1l_air(0.5)
-    pm3 = particles.pm_per_1l_air(0.3)
+    pm50  = particles.pm_per_1l_air(5.0) - pm100
+    pm25  = particles.pm_per_1l_air(2.5) - pm100 - pm50
+    pm10  = particles.pm_per_1l_air(1.0) - pm100 - pm50 - pm25
+    pm5   = particles.pm_per_1l_air(0.5) - pm100 - pm50 - pm25 - pm10
+    pm3   = particles.pm_per_1l_air(0.3) - pm100 - pm50 - pm25 - pm10 - pm5
     
     record = {
         'time' : asctime(localtime(time)),
@@ -75,10 +82,6 @@ def read_data(time):
     }
     return record
 
-def print_data(d):
-    for key, value in d.items():
-        print(f'{key}: {value}')
-
 def sum_data(data):
     totals = {"time": data[0]["time"]}
     keys = list(data[0].keys())
@@ -93,29 +96,10 @@ def sum_data(data):
         totals[key] = round(totals[key] / num_records, 1)
     return totals
 
-
-# TODO change to save to file
 def save_data_to_json(d, file_path):
     file_path += ".json"
     with open(file_path, 'w') as json_file:
         json.dump(d, json_file, indent=4)
-
-
-def read_hist_data(fname):
-    d = []
-    print("reading " + fname)
-    with open(fname, 'r') as f:
-        d = json.load(f)
-        # TODO delete old line by line reading since changed from .txt to .json
-        '''
-        for line in f.readlines():
-            try:
-                record = json.loads(line)
-                d.append(record)
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON: {e}")
-        '''
-    return d
 
 # data collection thread
 def background(script_dir):
@@ -131,52 +115,39 @@ def background(script_dir):
         # should we save the data?
         if (t % data_aggregate_size == 0 and len(curr_data) >= data_aggregate_size/2):
             totals = sum_data(curr_data)
-
-            os.system('clear')
-            print_data(totals)
-            print(totals["time"])
             file_path = os.path.join(script_dir, filename(t))
-
-            print("filename(t): " + filename(t))
-            print("file_path: " + file_path)
+            print("saved: " + file_path)
             save_data_to_json(totals, file_path)
-
-
-        # temp save to json
-        # print(filename(t - (data_aggregate_size - 1)))
-        # print_data(record)
-        # file_path = os.path.join(script_dir, 'data.json')  # Absolute file path
-        # save_data_to_json(record, file_path)
 
         sleep(data_read_interval)
 
-
-# TODO fix flask routes
 @app.route('/')
 def index():
-    return render_template('index.html', hist_data=json.dumps(hist_data))
+    return render_template('index.html')
 
-@app.route('/say_hello')
-def say_hello():
-    return jsonify({"message": "Hello, world!"})
+@app.route('/get_data_files')
+def get_data_files():
+    data_files = []
+    for f in os.listdir('enviro-data'):
+        if f.endswith('.json'):
+            data_files.append(f)
+    data_files = sorted(data_files)
+    return jsonify({'files': data_files})
+
+@app.route('/enviro-data/<filename>')
+def serve_enviro_data(filename):
+    return send_from_directory('enviro-data', filename)
 
 if __name__ == '__main__':
     # makes directory for data storage
     if not os.path.isdir('enviro-data'):
         os.makedirs('enviro-data')
-    
-    # opens directory and reads historical data
-    files =  sorted(os.listdir('enviro-data'))
-    for f in files:
-        hist_data.append(read_hist_data("enviro-data/" + f))
 
-    # TODO remove run_background after testing
     if run_background:
         script_directory = os.path.dirname(os.path.abspath(__file__))
         background_thread = threading.Thread(target=background, args=(script_directory,))
         background_thread.start()
 
-    # TODO remove run_flask after testing
     if run_flask:
         try:
             app.run(debug=True, port=5000, host='0.0.0.0')
@@ -184,6 +155,6 @@ if __name__ == '__main__':
             print(e)
         run_flag = False
     
-    if (run_background):
+    if run_background:
         print("Closing background thread")
         background_thread.join()
