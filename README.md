@@ -1,6 +1,6 @@
 # Live Air Pollution Tracker
 <p align="center">
-    <img src="https://cdn.discordapp.com/attachments/1084642204590559242/1142727628747452436/image.png" alt="Web App Screenshot" width="90%">
+    <img src="https://cdn.discordapp.com/attachments/1084642204590559242/1142727628747452436/image.png" alt="Web App Screenshot">
 </p>
 ## Overview
 
