@@ -164,7 +164,6 @@ async function createChart(jsonDataArray) {
 
 document.addEventListener("DOMContentLoaded", async function () {
     const jsonDataArray = await fetchJsonDataArray();
-    printData(jsonDataArray);
     displayLatestData(jsonDataArray);
     createChart(jsonDataArray);
 });
